@@ -36,10 +36,9 @@ export default class NotionObjectStore {
             }
             const notion_property = this.property_map[object_property];
             const notion_type = this.schema[notion_property];
-            if (!notion_type) {
-                throw new Error(`Property [${object_property}] not found in property map.`);
+            if (notion_type) {
+                notion_properties[notion_property] = new NotionDBProperty(notion_type).serialize(instance[object_property]);
             }
-            notion_properties[notion_property] = new NotionDBProperty(notion_type).serialize(instance[object_property]);
         }
 
         // Then, we can persist the object to the database
@@ -54,6 +53,7 @@ export default class NotionObjectStore {
                 properties: notion_properties
             });
             instance.id = response.id;
+            instance.created_time = new Date(response.created_time);
         }
         return instance;
     }
@@ -68,10 +68,13 @@ export default class NotionObjectStore {
         const instance = {};
         for (const object_property in this.property_map) {
             const notion_property = this.property_map[object_property];
+            if (!(notion_property in response.properties) || !(notion_property in this.schema)) continue;
             const notion_type = this.schema[notion_property];
             instance[object_property] = new NotionDBProperty(notion_type).deserialize(response.properties[notion_property]);
+            
         }
         instance.id = response.id;
+        instance.created_time = new Date(response.created_time);
         return instance;
     }
 
@@ -79,12 +82,13 @@ export default class NotionObjectStore {
         if (!this.initialized) await this.init();
 
         // Query the database for objects that match the filter
-        const { filter, sorts } = args; 
         const notion_query = {
             database_id: this.database_id
         };
-        if (filter) notion_query.filter = filter;
-        if (sorts) notion_query.sorts = sorts;
+        if (args) {
+            if (args.filter) notion_query.filter = args.filter;
+            if (args.sorts) notion_query.sorts = args.sorts;
+        }
         
         const response = await this.client.databases.query(notion_query);
         const instances = [];
@@ -92,10 +96,12 @@ export default class NotionObjectStore {
             const instance = {};
             for (const object_property in this.property_map) {
                 const notion_property = this.property_map[object_property];
+                if (!(notion_property in page.properties) || !(notion_property in this.schema)) continue;
                 const notion_type = this.schema[notion_property];
                 instance[object_property] = new NotionDBProperty(notion_type).deserialize(page.properties[notion_property]);
             }
             instance.id = page.id;
+            instance.created_time = new Date(page.created_time);
             instances.push(instance);
         }
         return instances;
